@@ -114,3 +114,119 @@ resource "aws_instance" "ssm_instance" {
               systemctl start amazon-ssm-agent
               EOF
 }
+
+resource "aws_security_group" "rds" {
+  name_prefix = "rds_sg"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "rds_security_group"
+  }
+}
+resource "aws_db_subnet_group" "main" {
+  name       = "main"
+  subnet_ids = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+  tags = {
+    Name = "main"
+  }
+}
+
+resource "aws_db_instance" "maria_master" {
+  identifier        = "mariadb-master"
+  engine            = "mariadb"
+  instance_class    = "db.t2.micro"
+  allocated_storage = 20
+  name              = "masterdb"
+  username          = "admin"
+  password          = "password"
+  subnet_group_name = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  skip_final_snapshot = true
+
+  tags = {
+    Name = "mariadb-master"
+  }
+}
+resource "aws_db_instance" "maria_replica" {
+  identifier          = "mariadb-replica"
+  engine              = "mariadb"
+  instance_class      = "db.t2.micro"
+  allocated_storage   = 20
+  name                = "replicadb"
+  username            = "admin"
+  password            = "password"
+  subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.rds.id]
+  skip_final_snapshot = true
+
+  replicate_source_db = aws_db_instance.maria_master.id
+
+  tags = {
+    Name = "mariadb-replica"
+  }
+}
+
+resource "aws_security_group" "ec2" {
+  name_prefix = "ec2_sg"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "ec2_security_group"
+  }
+}
+
+# Allow EC2 instance to access the RDS master instance
+resource "aws_security_group_rule" "allow_ec2_to_rds" {
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.rds.id
+  source_security_group_id = aws_security_group.ec2.id
+}
+
+resource "aws_instance" "ec2_instance" {
+  ami           = "ami-0c55b159cbfafe1f0" # Use the appropriate AMI ID for your region and instance type
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.private_1.id
+  security_groups = [aws_security_group.ec2.name]
+
+  tags = {
+    Name = "ec2_instance"
+  }
+
+  user_data = <<-EOF
+              #!/bin/bash
+              yum install -y mariadb
+              EOF
+}
+
+
