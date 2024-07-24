@@ -195,7 +195,7 @@ resource "aws_iam_instance_profile" "ssm_instance_profile" {
 resource "aws_instance" "ssm_instance" {
   ami           = "ami-0c55b159cbfafe1f0" # Use the appropriate AMI ID for your region and instance type
   instance_type = "t2.micro"
-  subnet_id     = aws_subnet.public.id
+  subnet_id     = aws_subnet.public_1.id
   security_groups = [aws_security_group.allow_ssh.name]
   iam_instance_profile = aws_iam_instance_profile.ssm_instance_profile.name
 
