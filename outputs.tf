@@ -1,6 +1,14 @@
-output "vpcs" {
-  description = "VPC Outputs"
-  value       = { for vpc in aws_vpc.this : vpc.tags.Name => { "cidr_block" : vpc.cidr_block, "id" : vpc.id } }
+output "public_subnet_id_1" {
+  value = aws_subnet.public_1.id
+}
+output "public_subnet_id_2" {
+  value = aws_subnet.public_2.id
+}
+output "private_subnet_id_1" {
+  value = aws_subnet.private_1.id
+}
+output "private_subnet_id_2" {
+  value = aws_subnet.private_2.id
 }
 output "instance_id" {
   value = aws_instance.ssm_instance.id
