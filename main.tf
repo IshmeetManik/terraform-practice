@@ -1,51 +1,147 @@
-resource "aws_vpc" "this" {
-  for_each             = var.vpc_parameters
-  cidr_block           = each.value.cidr_block
-  enable_dns_support   = each.value.enable_dns_support
-  enable_dns_hostnames = each.value.enable_dns_hostnames
-  tags = merge(each.value.tags, {
-    Name : each.key
-  })
+provider "aws" {
+  region = "us-east-1"
 }
 
-resource "aws_subnet" "this" {
-  for_each   = var.subnet_parameters
-  vpc_id     = aws_vpc.this[each.value.vpc_name].id
-  cidr_block = each.value.cidr_block
-  tags = merge(each.value.tags, {
-    Name : each.key
-  })
-}
-
-resource "aws_internet_gateway" "this" {
-  for_each = var.igw_parameters
-  vpc_id   = aws_vpc.this[each.value.vpc_name].id
-  tags = merge(each.value.tags, {
-    Name : each.key
-  })
-}
-
-resource "aws_route_table" "this" {
-  for_each = var.rt_parameters
-  vpc_id   = aws_vpc.this[each.value.vpc_name].id
-  tags = merge(each.value.tags, {
-    Name : each.key
-  })
-
-  dynamic "route" {
-    for_each = each.value.routes
-    content {
-      cidr_block = route.value.cidr_block
-      gateway_id = route.value.use_igw ? aws_internet_gateway.this[route.value.gateway_id].id : route.value.gateway_id
-    }
+resource "aws_vpc" "main" {
+  cidr_block = "10.0.0.0/16"
+  enable_dns_support = true
+  enable_dns_hostnames = true
+  tags = {
+    Name = "main_vpc"
   }
 }
 
-resource "aws_route_table_association" "this" {
-  for_each       = var.rt_association_parameters
-  subnet_id      = aws_subnet.this[each.value.subnet_name].id
-  route_table_id = aws_route_table.this[each.value.rt_name].id
+resource "aws_subnet" "public_1" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "public_subnet"
+  }
 }
+
+resource "aws_subnet" "public_2" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = "10.0.1.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "public_subnet"
+  }
+}
+
+resource "aws_subnet" "private_1" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+  tags = {
+    Name = "private_subnet"
+  }
+}
+resource "aws_subnet" "private_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "us-east-1b"
+  tags = {
+    Name = "private_subnet"
+  }
+}
+
+resource "aws_internet_gateway" "igw" {
+  vpc_id = aws_vpc.main.id
+  tags = {
+    Name = "main_igw"
+  }
+}
+
+resource "aws_route_table" "public_rt_1" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+  tags = {
+    Name = "public_route_table"
+  }
+}
+resource "aws_route_table" "public_rt_2" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+  tags = {
+    Name = "public_route_table"
+  }
+}
+
+resource "aws_route_table_association" "public_association_1" {
+  subnet_id      = aws_subnet.public_1.id
+  route_table_id = aws_route_table.public_rt_1.id
+}
+
+resource "aws_route_table_association" "public_association_2" {
+  subnet_id      = aws_subnet.public_2.id
+  route_table_id = aws_route_table.public_rt_2.id
+}
+
+
+resource "aws_eip" "nat" {
+  vpc = true
+  tags = {
+    Name = "nat_eip"
+  }
+}
+
+resource "aws_nat_gateway" "nat_1" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_1.id
+  tags = {
+    Name = "main_nat"
+  }
+}
+
+resource "aws_route_table" "private_1" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_1.id
+  }
+  tags = {
+    Name = "private_route_table"
+  }
+}
+
+resource "aws_route_table_association" "private_association_1" {
+  subnet_id      = aws_subnet.private_1.id
+  route_table_id = aws_route_table.private_1.id
+}
+
+resource "aws_nat_gateway" "nat_2" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.public_2.id
+  tags = {
+    Name = "main_nat"
+  }
+}
+
+resource "aws_route_table" "private_2" {
+  vpc_id = aws_vpc.main.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_2.id
+  }
+  tags = {
+    Name = "private_route_table"
+  }
+}
+
+resource "aws_route_table_association" "private_association_2" {
+  subnet_id      = aws_subnet.private_2.id
+  route_table_id = aws_route_table.private_2.id
+}
+
 
 resource "aws_security_group" "allow_ssh" {
   name_prefix = "allow_ssh"
